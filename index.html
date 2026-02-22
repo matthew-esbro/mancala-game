@@ -55,10 +55,55 @@
       return b;
     }
     function evaluateBoard(board, player) {
-      return board[player === 0 ? 6 : 13] - board[player === 0 ? 13 : 6];
+      var myStore = player === 0 ? 6 : 13;
+      var oppStore = player === 0 ? 13 : 6;
+      var myStart = player === 0 ? 0 : 7;
+      var oppStart = player === 0 ? 7 : 0;
+      // Store difference (primary, heavily weighted)
+      var score = (board[myStore] - board[oppStore]) * 10;
+      // Seed control: seeds on my side vs opponent's side
+      var mySeeds = 0, oppSeeds = 0;
+      for (var i = 0; i < 6; i++) {
+        mySeeds += board[myStart + i];
+        oppSeeds += board[oppStart + i];
+      }
+      score += (mySeeds - oppSeeds) * 2;
+      // Capture threats: empty pits on my side with seeds opposite
+      for (var i = 0; i < 6; i++) {
+        var pit = myStart + i;
+        var opp = 12 - pit;
+        if (board[pit] === 0 && board[opp] > 0) {
+          score += Math.min(board[opp], 6); // potential capture value (capped)
+        }
+      }
+      // Opponent capture threats: penalize empty pits on their side with our seeds
+      for (var i = 0; i < 6; i++) {
+        var pit = oppStart + i;
+        var opp = 12 - pit;
+        if (board[pit] === 0 && board[opp] > 0) {
+          score -= Math.min(board[opp], 4); // danger penalty
+        }
+      }
+      // Extra turn opportunities: pit where stones land exactly in store
+      for (var i = 0; i < 6; i++) {
+        var pit = myStart + i;
+        var distToStore = myStore - pit;
+        if (board[pit] > 0 && board[pit] === distToStore) {
+          score += 4; // bonus for available extra turns
+        }
+      }
+      // If game is over, who is winning is all that matters (make it decisive)
+      if (mySeeds === 0 || oppSeeds === 0) {
+        score = (board[myStore] + mySeeds - board[oppStore] - oppSeeds) * 100;
+      }
+      return score;
     }
-    function minimax(board, depth, alpha, beta, maximizing, orig) {
-      if (depth === 0 || isGameOver(board)) return { score: evaluateBoard(board, orig), move: -1 };
+    function minimax(board, depth, alpha, beta, maximizing, orig, absDepth) {
+      if (absDepth === undefined) absDepth = 24;
+      if (depth === 0 || absDepth === 0 || isGameOver(board)) {
+        var evalBoard = isGameOver(board) ? finalizeBoard(board) : board;
+        return { score: evaluateBoard(evalBoard, orig), move: -1 };
+      }
       const cur = maximizing ? orig : 1 - orig;
       const moves = getValidMoves(board, cur);
       if (moves.length === 0) return { score: evaluateBoard(finalizeBoard(board), orig), move: -1 };
@@ -67,7 +112,7 @@
         let mx = -Infinity;
         for (const m of moves) {
           const { finalBoard: nb, extraTurn } = sowResult(board, m, cur);
-          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, extraTurn, orig);
+          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, extraTurn, orig, absDepth - 1);
           if (score > mx) { mx = score; bestMove = m; }
           alpha = Math.max(alpha, score);
           if (beta <= alpha) break;
@@ -77,7 +122,7 @@
         let mn = Infinity;
         for (const m of moves) {
           const { finalBoard: nb, extraTurn } = sowResult(board, m, cur);
-          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, !extraTurn, orig);
+          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, !extraTurn, orig, absDepth - 1);
           if (score < mn) { mn = score; bestMove = m; }
           beta = Math.min(beta, score);
           if (beta <= alpha) break;
@@ -106,7 +151,7 @@
       }
       var results = moves.map(function(m) {
         var r = sowResult(board, m, player);
-        var s = minimax(r.finalBoard, r.extraTurn ? 8 : 7, -Infinity, Infinity, r.extraTurn, player);
+        var s = minimax(r.finalBoard, r.extraTurn ? 10 : 9, -Infinity, Infinity, r.extraTurn, player);
         return { move: m, score: s.score };
       });
       var topScore = results.reduce(function(a, b) { return b.score > a.score ? b : a; }).score;
@@ -129,7 +174,7 @@
       var mmMoves = getValidMoves(board, player);
       var mmResults = mmMoves.map(function(m) {
         var r = sowResult(board, m, player);
-        var s = minimax(r.finalBoard, r.extraTurn ? 8 : 7, -Infinity, Infinity, r.extraTurn, player);
+        var s = minimax(r.finalBoard, r.extraTurn ? 10 : 9, -Infinity, Infinity, r.extraTurn, player);
         return { move: m, score: s.score };
       });
       var mmTop = mmResults.reduce(function(a, b) { return b.score > a.score ? b : a; }).score;
@@ -599,7 +644,7 @@
               <button onClick={() => startGame(false)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 19, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 2, boxShadow: "0 4px 20px rgba(218,165,87,0.3)" }}>PLAY</button>
               <button onClick={() => startGame(true)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px solid #3498db", background: "rgba(52,152,219,0.12)", color: "#3498db", fontWeight: "bold", fontSize: 15, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1, marginTop: 8 }}>TRAINING MODE</button>
               <div style={{ marginTop: 14, padding: 12, background: "rgba(0,0,0,0.3)", borderRadius: 10, fontSize: 11, color: "#8a6a4a", lineHeight: 1.7 }}>
-                <strong style={{ color: "#daa557" }}>CPU:</strong> <span style={{ color: CPU_CLR.rookie }}>Rookie</span> plays casual - <span style={{ color: CPU_CLR.sharp }}>Sharp</span> hunts captures - <span style={{ color: CPU_CLR.counter }}>Counter</span> thinks 8 moves deep
+                <strong style={{ color: "#daa557" }}>CPU:</strong> <span style={{ color: CPU_CLR.rookie }}>Rookie</span> plays casual - <span style={{ color: CPU_CLR.sharp }}>Sharp</span> hunts captures - <span style={{ color: CPU_CLR.counter }}>Counter</span> thinks 10 moves deep
               </div>
               <div style={{ marginTop: 8, padding: 12, background: "rgba(0,0,0,0.3)", borderRadius: 10, fontSize: 11, color: "#8a6a4a", lineHeight: 1.7 }}>
                 <strong style={{ color: "#daa557" }}>Rules:</strong> Sow stones counter-clockwise. Land in your store = extra turn. Land in empty pit on your side = capture opposite. Most stones wins.
