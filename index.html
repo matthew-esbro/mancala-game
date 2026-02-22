@@ -425,8 +425,9 @@
         timersRef.current = [];
       };
 
-      const startGame = async (isTraining) => {
+      const startGame = async (isTraining, overrideGoFirst) => {
         clearTimer();
+        const cpuFirst = overrideGoFirst !== undefined ? !overrideGoFirst : !goFirst;
         const b = initBoard();
         const mm = initMarbleMap();
         _marbleIdCounter = 0; clearMarbleOffsets(); // reset for clean game
@@ -437,7 +438,7 @@
         if (isTraining) {
           setMessage("Training Mode - computing strategy...");
           setScreen("game");
-          if (!goFirst) {
+          if (cpuFirst) {
             // CPU goes first
             setCurrentPlayer(1);
             setMessage("CPU goes first... thinking...");
@@ -458,7 +459,7 @@
         } else {
           setStrategy(null);
           setScreen("game");
-          if (!goFirst) {
+          if (cpuFirst) {
             // CPU goes first
             setCurrentPlayer(1);
             setMessage("CPU goes first... thinking...");
@@ -852,7 +853,7 @@
           )}
           {gameOver && (
             <div style={{ textAlign: "center", padding: "8px 0 12px", display: "flex", gap: 8, justifyContent: "center" }}>
-              <button onClick={() => startGame(training)} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 16, cursor: "pointer", fontFamily: "'Georgia', serif" }}>PLAY AGAIN</button>
+              <button onClick={() => { const next = !goFirst; setGoFirst(next); startGame(training, next); }} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 16, cursor: "pointer", fontFamily: "'Georgia', serif" }}>PLAY AGAIN</button>
               <button onClick={backToSetup} style={{ padding: "12px 28px", borderRadius: 10, border: "1px solid #5a3a20", background: "rgba(60,40,20,0.5)", color: "#daa557", fontWeight: "bold", fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>LOBBY</button>
             </div>
           )}
