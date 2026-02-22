@@ -94,16 +94,24 @@
         return moves[Math.floor(Math.random() * moves.length)];
       }
       if (level === "sharp") {
-        let best = moves[0], bs = -Infinity;
-        for (const m of moves) {
-          const { finalBoard: nb, extraTurn } = sowResult(board, m, player);
-          let sc = evaluateBoard(nb, player) * 2;
-          if (extraTurn) sc += 15;
-          if (sc > bs) { bs = sc; best = m; }
-        }
-        return best;
+        var scored = moves.map(function(m) {
+          var r = sowResult(board, m, player);
+          var sc = evaluateBoard(r.finalBoard, player) * 2;
+          if (r.extraTurn) sc += 15;
+          sc += (Math.random() - 0.5) * 2;
+          return { move: m, score: sc };
+        });
+        scored.sort(function(a, b) { return b.score - a.score; });
+        return scored[0].move;
       }
-      return minimax(board, 8, -Infinity, Infinity, true, player).move;
+      var results = moves.map(function(m) {
+        var r = sowResult(board, m, player);
+        var s = minimax(r.finalBoard, r.extraTurn ? 8 : 7, -Infinity, Infinity, r.extraTurn, player);
+        return { move: m, score: s.score };
+      });
+      var topScore = results.reduce(function(a, b) { return b.score > a.score ? b : a; }).score;
+      var ties = results.filter(function(r) { return r.score === topScore; });
+      return ties[Math.floor(Math.random() * ties.length)].move;
     }
     function getStrategy(board, player) {
       const moves = getValidMoves(board, player);
@@ -117,9 +125,16 @@
         if (a.extraTurn !== b.extraTurn) return a.extraTurn ? -1 : 1;
         return b.scoreDiff - a.scoreDiff;
       });
-      const best = analyses[0];
-      const mmResult = minimax(board, 8, -Infinity, Infinity, true, player);
-      const mmMove = mmResult.move;
+      var best = analyses[0];
+      var mmMoves = getValidMoves(board, player);
+      var mmResults = mmMoves.map(function(m) {
+        var r = sowResult(board, m, player);
+        var s = minimax(r.finalBoard, r.extraTurn ? 8 : 7, -Infinity, Infinity, r.extraTurn, player);
+        return { move: m, score: s.score };
+      });
+      var mmTop = mmResults.reduce(function(a, b) { return b.score > a.score ? b : a; }).score;
+      var mmTies = mmResults.filter(function(r) { return r.score === mmTop; });
+      var mmMove = mmTies[Math.floor(Math.random() * mmTies.length)].move;
       const pl = best.pit + 1, ml = mmMove + 1;
       let tip = "";
       if (best.extraTurn) tip = "Pit " + pl + " gives you an extra turn! Always take free turns.";
