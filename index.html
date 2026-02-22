@@ -364,6 +364,7 @@
       const [gameOver, setGameOver] = useState(false);
       const [message, setMessage] = useState("");
       const [cpuLevel, setCpuLevel] = useState("sharp");
+      const [goFirst, setGoFirst] = useState(true);
       const [training, setTraining] = useState(false);
       const [strategy, setStrategy] = useState(null);
       const [history, setHistory] = useState([]);
@@ -436,15 +437,41 @@
         if (isTraining) {
           setMessage("Training Mode - computing strategy...");
           setScreen("game");
-          const data = await postWorker({ type: "strategy", board: b, player: 0 });
-          if (mountedRef.current) {
-            setStrategy(data.result);
-            setMessage("Training Mode - tap a pit. Strategy shown below.");
+          if (!goFirst) {
+            // CPU goes first
+            setCurrentPlayer(1);
+            setMessage("CPU goes first... thinking...");
+            safeTimeout(async () => {
+              if (!mountedRef.current) return;
+              const data = await postWorker({ type: "cpuMove", board: b, player: 1, level: cpuLevel });
+              if (!mountedRef.current) return;
+              const cp = data.move;
+              if (cp >= 0) animateSow(b, mm, cp, 1, (fb2, et2, mm2) => finishMove(fb2, et2, 1, cp, isTraining, cpuLevel, mm2));
+            }, 500);
+          } else {
+            const data = await postWorker({ type: "strategy", board: b, player: 0 });
+            if (mountedRef.current) {
+              setStrategy(data.result);
+              setMessage("Training Mode - tap a pit. Strategy shown below.");
+            }
           }
         } else {
           setStrategy(null);
-          setMessage("Your turn! Tap a pit to sow stones.");
           setScreen("game");
+          if (!goFirst) {
+            // CPU goes first
+            setCurrentPlayer(1);
+            setMessage("CPU goes first... thinking...");
+            safeTimeout(async () => {
+              if (!mountedRef.current) return;
+              const data = await postWorker({ type: "cpuMove", board: b, player: 1, level: cpuLevel });
+              if (!mountedRef.current) return;
+              const cp = data.move;
+              if (cp >= 0) animateSow(b, mm, cp, 1, (fb2, et2, mm2) => finishMove(fb2, et2, 1, cp, false, cpuLevel, mm2));
+            }, 500);
+          } else {
+            setMessage("Your turn! Tap a pit to sow stones.");
+          }
         }
       };
 
@@ -641,6 +668,19 @@
                   ))}
                 </div>
               </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", marginBottom: 8, color: "#daa557", fontSize: 12, letterSpacing: 1 }}>TURN ORDER</label>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[true, false].map(val => (
+                    <button key={String(val)} onClick={() => setGoFirst(val)} style={{
+                      flex: 1, padding: "10px 4px", borderRadius: 8, border: "none",
+                      background: goFirst === val ? "linear-gradient(135deg, #c0952a, #daa557)" : "rgba(90,58,32,0.5)",
+                      color: goFirst === val ? "#1a0e07" : "#daa557",
+                      fontWeight: "bold", fontSize: 12, cursor: "pointer", fontFamily: "'Georgia', serif",
+                    }}>{val ? "Go First" : "Go Second"}</button>
+                  ))}
+                </div>
+              </div>
               <button onClick={() => startGame(false)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 19, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 2, boxShadow: "0 4px 20px rgba(218,165,87,0.3)" }}>PLAY</button>
               <button onClick={() => startGame(true)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px solid #3498db", background: "rgba(52,152,219,0.12)", color: "#3498db", fontWeight: "bold", fontSize: 15, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1, marginTop: 8 }}>TRAINING MODE</button>
               <div style={{ marginTop: 14, padding: 12, background: "rgba(0,0,0,0.3)", borderRadius: 10, fontSize: 11, color: "#8a6a4a", lineHeight: 1.7 }}>
@@ -732,8 +772,8 @@
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(0,0,0,0.3)", borderBottom: "1px solid rgba(218,165,87,0.15)" }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: "bold", color: "#daa557", letterSpacing: 2 }}>MANCALA</div>
-              {training ? <div style={{ fontSize: 10, color: "#3498db", fontWeight: "bold", letterSpacing: 1 }}>TRAINING vs {CPU_LABELS[cpuLevel]}</div>
-                : <div style={{ fontSize: 10, color: CPU_CLR[cpuLevel] }}>vs {CPU_LABELS[cpuLevel]}</div>}
+              {training ? <div style={{ fontSize: 10, color: "#3498db", fontWeight: "bold", letterSpacing: 1 }}>TRAINING vs {CPU_LABELS[cpuLevel]}{!goFirst ? " (2nd)" : ""}</div>
+                : <div style={{ fontSize: 10, color: CPU_CLR[cpuLevel] }}>vs {CPU_LABELS[cpuLevel]}{!goFirst ? " (2nd)" : ""}</div>}
             </div>
             <div style={{ textAlign: "center" }}>
               {stonesInHand > 0 ? (
