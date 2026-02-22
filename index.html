@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mancala - Stone Strategy</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow-x: hidden; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Web Worker for AI (runs minimax off the main thread) -->
+  <script id="ai-worker" type="text/worker">
+    function getValidMoves(board, player) {
+      const start = player === 0 ? 0 : 7;
+      const moves = [];
+      for (let i = start; i < start + 6; i++) if (board[i] > 0) moves.push(i);
+      return moves;
+    }
+    function nextPit(idx, player) {
+      const skip = player === 0 ? 13 : 6;
+      let n = (idx + 1) % 14;
+      if (n === skip) n = (n + 1) % 14;
+      return n;
+    }
+    function sowResult(board, pit, player) {
+      const b = [...board];
+      let stones = b[pit]; b[pit] = 0; let idx = pit;
+      const sequence = [];
+      while (stones > 0) { idx = nextPit(idx, player); b[idx]++; stones--; sequence.push(idx); }
+      const myStore = player === 0 ? 6 : 13;
+      const extraTurn = idx === myStore;
+      const myPits = player === 0 ? [0,1,2,3,4,5] : [7,8,9,10,11,12];
+      let captured = 0;
+      if (!extraTurn && myPits.includes(idx) && b[idx] === 1) {
+        const opp = 12 - idx;
+        if (b[opp] > 0) { captured = b[opp] + 1; b[myStore] += b[opp] + 1; b[opp] = 0; b[idx] = 0; }
+      }
+      return { finalBoard: b, extraTurn, sequence, captured };
+    }
+    function isGameOver(board) {
+      return board.slice(0, 6).every(function(v) { return v === 0; }) || board.slice(7, 13).every(function(v) { return v === 0; });
+    }
+    function finalizeBoard(board) {
+      const b = [...board];
+      for (let i = 0; i < 6; i++) { b[6] += b[i]; b[i] = 0; }
+      for (let i = 7; i < 13; i++) { b[13] += b[i]; b[i] = 0; }
+      return b;
+    }
+    function evaluateBoard(board, player) {
+      return board[player === 0 ? 6 : 13] - board[player === 0 ? 13 : 6];
+    }
+    function minimax(board, depth, alpha, beta, maximizing, orig) {
+      if (depth === 0 || isGameOver(board)) return { score: evaluateBoard(board, orig), move: -1 };
+      const cur = maximizing ? orig : 1 - orig;
+      const moves = getValidMoves(board, cur);
+      if (moves.length === 0) return { score: evaluateBoard(finalizeBoard(board), orig), move: -1 };
+      let bestMove = moves[0];
+      if (maximizing) {
+        let mx = -Infinity;
+        for (const m of moves) {
+          const { finalBoard: nb, extraTurn } = sowResult(board, m, cur);
+          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, extraTurn, orig);
+          if (score > mx) { mx = score; bestMove = m; }
+          alpha = Math.max(alpha, score);
+          if (beta <= alpha) break;
+        }
+        return { score: mx, move: bestMove };
+      } else {
+        let mn = Infinity;
+        for (const m of moves) {
+          const { finalBoard: nb, extraTurn } = sowResult(board, m, cur);
+          const { score } = minimax(nb, extraTurn ? depth : depth - 1, alpha, beta, !extraTurn, orig);
+          if (score < mn) { mn = score; bestMove = m; }
+          beta = Math.min(beta, score);
+          if (beta <= alpha) break;
+        }
+        return { score: mn, move: bestMove };
+      }
+    }
+    function cpuMove(board, player, level) {
+      const moves = getValidMoves(board, player);
+      if (moves.length === 0) return -1;
+      if (level === "rookie") {
+        const extras = moves.filter(function(m) { return sowResult(board, m, player).extraTurn; });
+        if (extras.length > 0 && Math.random() < 0.5) return extras[Math.floor(Math.random() * extras.length)];
+        return moves[Math.floor(Math.random() * moves.length)];
+      }
+      if (level === "sharp") {
+        let best = moves[0], bs = -Infinity;
+        for (const m of moves) {
+          const { finalBoard: nb, extraTurn } = sowResult(board, m, player);
+          let sc = evaluateBoard(nb, player) * 2;
+          if (extraTurn) sc += 15;
+          if (sc > bs) { bs = sc; best = m; }
+        }
+        return best;
+      }
+      return minimax(board, 8, -Infinity, Infinity, true, player).move;
+    }
+    function getStrategy(board, player) {
+      const moves = getValidMoves(board, player);
+      if (moves.length === 0) return null;
+      const analyses = moves.map(function(m) {
+        const { finalBoard: nb, extraTurn, captured } = sowResult(board, m, player);
+        const diff = evaluateBoard(nb, player) - evaluateBoard(board, player);
+        return { pit: m, extraTurn: extraTurn, captured: captured, scoreDiff: diff };
+      });
+      analyses.sort(function(a, b) {
+        if (a.extraTurn !== b.extraTurn) return a.extraTurn ? -1 : 1;
+        return b.scoreDiff - a.scoreDiff;
+      });
+      const best = analyses[0];
+      const mmResult = minimax(board, 8, -Infinity, Infinity, true, player);
+      const mmMove = mmResult.move;
+      const pl = best.pit + 1, ml = mmMove + 1;
+      let tip = "";
+      if (best.extraTurn) tip = "Pit " + pl + " gives you an extra turn! Always take free turns.";
+      else if (best.captured > 0) tip = "Pit " + pl + " captures " + best.captured + " stones. Strong move.";
+      else if (best.scoreDiff > 0) tip = "Pit " + pl + " gains +" + best.scoreDiff + " advantage.";
+      else tip = "Pit " + pl + " is the safest option.";
+      if (mmMove !== best.pit) tip += " Deep analysis prefers Pit " + ml + ".";
+      return { bestMove: mmMove, analyses: analyses, tip: tip };
+    }
+    self.onmessage = function(e) {
+      const { type, board, player, level, id } = e.data;
+      if (type === "cpuMove") {
+        const move = cpuMove(board, player, level);
+        self.postMessage({ type: "cpuMove", move: move, id: id });
+      } else if (type === "strategy") {
+        const result = getStrategy(board, player);
+        self.postMessage({ type: "strategy", result: result, id: id });
+      }
+    };
+  </script>
+
+  <script type="text/babel">
+    const { useState, useCallback, useRef, useEffect } = React;
+
+    // ── Create Web Worker from inline script ──
+    function createAIWorker() {
+      const el = document.getElementById("ai-worker");
+      if (!el) throw new Error("AI worker script element not found");
+      const code = el.textContent;
+      const blob = new Blob([code], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      const worker = new Worker(url);
+      URL.revokeObjectURL(url);
+      return worker;
+    }
+
+    // ── Game logic (kept on main thread for animation/validation) ──
+    function initBoard() {
+      const b = new Array(14).fill(4);
+      b[6] = 0; b[13] = 0;
+      return b;
+    }
+    function getValidMoves(board, player) {
+      const start = player === 0 ? 0 : 7;
+      const moves = [];
+      for (let i = start; i < start + 6; i++) if (board[i] > 0) moves.push(i);
+      return moves;
+    }
+    function nextPit(idx, player) {
+      const skip = player === 0 ? 13 : 6;
+      let n = (idx + 1) % 14;
+      if (n === skip) n = (n + 1) % 14;
+      return n;
+    }
+    function sowResult(board, pit, player) {
+      const b = [...board];
+      let stones = b[pit]; b[pit] = 0; let idx = pit;
+      const sequence = [];
+      while (stones > 0) { idx = nextPit(idx, player); b[idx]++; stones--; sequence.push(idx); }
+      const myStore = player === 0 ? 6 : 13;
+      const extraTurn = idx === myStore;
+      const myPits = player === 0 ? [0,1,2,3,4,5] : [7,8,9,10,11,12];
+      let captured = 0;
+      if (!extraTurn && myPits.includes(idx) && b[idx] === 1) {
+        const opp = 12 - idx;
+        if (b[opp] > 0) { captured = b[opp] + 1; b[myStore] += b[opp] + 1; b[opp] = 0; b[idx] = 0; }
+      }
+      return { finalBoard: b, extraTurn, sequence, captured };
+    }
+    function isGameOver(board) {
+      return board.slice(0, 6).every(v => v === 0) || board.slice(7, 13).every(v => v === 0);
+    }
+    function finalizeBoard(board) {
+      const b = [...board];
+      for (let i = 0; i < 6; i++) { b[6] += b[i]; b[i] = 0; }
+      for (let i = 7; i < 13; i++) { b[13] += b[i]; b[i] = 0; }
+      return b;
+    }
+    function getWinner(board) {
+      if (board[6] > board[13]) return 0;
+      if (board[13] > board[6]) return 1;
+      return -1;
+    }
+    // ── Stable marble ID system ──
+    let _marbleIdCounter = 0;
+    function generateMarbleIds(count) {
+      const ids = [];
+      for (let i = 0; i < count; i++) ids.push(++_marbleIdCounter);
+      return ids;
+    }
+    function initMarbleMap() {
+      const map = {};
+      for (let i = 0; i < 14; i++) {
+        if (i === 6 || i === 13) { map[i] = []; }
+        else { map[i] = generateMarbleIds(4); }
+      }
+      return map;
+    }
+    function updateMarbleMap(prevMap, prevBoard, newBoard, sequence, sourcePit, captured, player) {
+      const map = {};
+      for (let i = 0; i < 14; i++) map[i] = [...(prevMap[i] || [])];
+      // Remove all marbles from source pit
+      const moving = map[sourcePit].splice(0);
+      // Drop one marble into each pit in the sequence
+      for (let s = 0; s < sequence.length; s++) {
+        const target = sequence[s];
+        if (s < moving.length) {
+          map[target].push(moving[s]);
+        } else {
+          map[target].push(generateMarbleIds(1)[0]);
+        }
+      }
+      // Handle capture: move marbles from captured pit + landing pit to store
+      if (captured > 0) {
+        const lastPit = sequence[sequence.length - 1];
+        const opp = 12 - lastPit;
+        const myStore = player === 0 ? 6 : 13;
+        const capturedMarbles = map[opp].splice(0);
+        const landingMarbles = map[lastPit].splice(0);
+        map[myStore].push(...capturedMarbles, ...landingMarbles);
+      }
+      // Sync: ensure each pit's marble count matches the board
+      for (let i = 0; i < 14; i++) {
+        const target = newBoard[i];
+        while (map[i].length < target) map[i].push(generateMarbleIds(1)[0]);
+        while (map[i].length > target) map[i].pop();
+      }
+      return map;
+    }
+
+    // ── Marble offsets cache (stable per marble ID) ──
+    let marbleOffsets = {};
+    function clearMarbleOffsets() { marbleOffsets = {}; }
+    function getMarbleOffset(id) {
+      if (!marbleOffsets[id]) {
+        marbleOffsets[id] = {
+          ox: Math.round((Math.random() - 0.5) * 3),
+          oy: Math.round((Math.random() - 0.5) * 3),
+        };
+      }
+      return marbleOffsets[id];
+    }
+
+    function Marble({ id, size = 18 }) {
+      const { ox, oy } = getMarbleOffset(id);
+      return (
+        <div style={{
+          width: size, height: size, borderRadius: "50%", flexShrink: 0,
+          background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.6), #c8a050 30%, #a07830 58%, #886828 82%, #705520 100%)",
+          boxShadow: "inset -2px -3px 5px rgba(0,0,0,0.3), inset 2px 2px 3px rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.35)",
+          transform: "translate(" + ox + "px, " + oy + "px)",
+        }} />
+      );
+    }
+
+    const CPU_LABELS = { rookie: "Rookie", sharp: "Sharp", counter: "Counter" };
+    const CPU_CLR = { rookie: "#e67e22", sharp: "#3498db", counter: "#9b59b6" };
+
+    function Mancala() {
+      const [board, setBoard] = useState(initBoard());
+      const [marbleMap, setMarbleMap] = useState(initMarbleMap);
+      const [screen, setScreen] = useState("setup");
+      const [currentPlayer, setCurrentPlayer] = useState(0);
+      const [gameOver, setGameOver] = useState(false);
+      const [message, setMessage] = useState("");
+      const [cpuLevel, setCpuLevel] = useState("sharp");
+      const [training, setTraining] = useState(false);
+      const [strategy, setStrategy] = useState(null);
+      const [history, setHistory] = useState([]);
+      const historyIdRef = useRef(0);
+      const [busy, setBusy] = useState(false);
+      const [activePit, setActivePit] = useState(-1);
+      const [stonesInHand, setStonesInHand] = useState(0);
+      // Undo stack: stores { board, marbleMap, currentPlayer, history, message } snapshots
+      const [undoStack, setUndoStack] = useState([]);
+      const timerRef = useRef(null);
+      const timersRef = useRef([]); // track all active timers for cleanup
+      const mountedRef = useRef(true);
+      const workerRef = useRef(null);
+      const workerCallbacks = useRef({});
+      const workerIdRef = useRef(0);
+
+      // ── Web Worker lifecycle ──
+      useEffect(() => {
+        mountedRef.current = true;
+        workerRef.current = createAIWorker();
+        workerRef.current.onmessage = (e) => {
+          if (!mountedRef.current) return;
+          const { id } = e.data;
+          const cb = workerCallbacks.current[id];
+          if (cb) { delete workerCallbacks.current[id]; cb(e.data); }
+        };
+        return () => {
+          mountedRef.current = false;
+          // Clear ALL timers on unmount
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timersRef.current.forEach(t => clearTimeout(t));
+          timersRef.current = [];
+          if (workerRef.current) workerRef.current.terminate();
+        };
+      }, []);
+
+      const safeTimeout = (fn, ms) => {
+        const id = setTimeout(() => {
+          timersRef.current = timersRef.current.filter(t => t !== id);
+          if (mountedRef.current) fn();
+        }, ms);
+        timersRef.current.push(id);
+        timerRef.current = id;
+        return id;
+      };
+
+      const postWorker = (msg) => {
+        return new Promise((resolve) => {
+          const id = ++workerIdRef.current;
+          workerCallbacks.current[id] = resolve;
+          workerRef.current.postMessage({ ...msg, id });
+        });
+      };
+
+      const clearTimer = () => {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        timersRef.current.forEach(t => clearTimeout(t));
+        timersRef.current = [];
+      };
+
+      const startGame = async (isTraining) => {
+        clearTimer();
+        const b = initBoard();
+        const mm = initMarbleMap();
+        _marbleIdCounter = 0; clearMarbleOffsets(); // reset for clean game
+        setBoard(b); setMarbleMap(mm); setCurrentPlayer(0); setGameOver(false);
+        setHistory([]); historyIdRef.current = 0; setBusy(false); setActivePit(-1); setStonesInHand(0);
+        setUndoStack([]);
+        setTraining(isTraining);
+        if (isTraining) {
+          setMessage("Training Mode - computing strategy...");
+          setScreen("game");
+          const data = await postWorker({ type: "strategy", board: b, player: 0 });
+          if (mountedRef.current) {
+            setStrategy(data.result);
+            setMessage("Training Mode - tap a pit. Strategy shown below.");
+          }
+        } else {
+          setStrategy(null);
+          setMessage("Your turn! Tap a pit to sow stones.");
+          setScreen("game");
+        }
+      };
+
+      const animateSow = useCallback((b, mm, pit, player, onComplete) => {
+        const { finalBoard, extraTurn, sequence, captured } = sowResult(b, pit, player);
+        setBusy(true);
+        const animBoard = [...b];
+        animBoard[pit] = 0;
+        // Build intermediate marble maps for each step
+        const animMM = {};
+        for (let i = 0; i < 14; i++) animMM[i] = [...(mm[i] || [])];
+        const movingMarbles = animMM[pit].splice(0);
+        setBoard([...animBoard]);
+        setMarbleMap(JSON.parse(JSON.stringify(animMM)));
+        setActivePit(pit);
+        setStonesInHand(sequence.length);
+        let step = 0;
+        const dropNext = () => {
+          if (!mountedRef.current) return;
+          if (step >= sequence.length) {
+            if (captured > 0) {
+              safeTimeout(() => {
+                if (!mountedRef.current) return;
+                const finalMM = updateMarbleMap(mm, b, finalBoard, sequence, pit, captured, player);
+                setBoard([...finalBoard]);
+                setMarbleMap(finalMM);
+                setActivePit(player === 0 ? 6 : 13);
+                setStonesInHand(0);
+                safeTimeout(() => {
+                  if (!mountedRef.current) return;
+                  setActivePit(-1); setBusy(false);
+                  if (onComplete) onComplete(finalBoard, extraTurn, finalMM);
+                }, 300);
+              }, 200);
+            } else {
+              const finalMM = updateMarbleMap(mm, b, finalBoard, sequence, pit, captured, player);
+              setMarbleMap(finalMM);
+              setActivePit(-1); setStonesInHand(0); setBusy(false);
+              if (onComplete) onComplete(finalBoard, extraTurn, finalMM);
+            }
+            return;
+          }
+          const target = sequence[step];
+          animBoard[target]++;
+          // Add marble to the target pit in our anim map
+          if (step < movingMarbles.length) {
+            animMM[target].push(movingMarbles[step]);
+          } else {
+            animMM[target].push(generateMarbleIds(1)[0]);
+          }
+          setBoard([...animBoard]);
+          setMarbleMap(JSON.parse(JSON.stringify(animMM)));
+          setActivePit(target);
+          setStonesInHand(sequence.length - step - 1);
+          step++;
+          safeTimeout(dropNext, 180);
+        };
+        safeTimeout(dropNext, 200);
+      }, []);
+
+      const finishMove = useCallback((fb, extraTurn, player, pit, isTraining, level, mm) => {
+        if (!mountedRef.current) return;
+        const pitLabel = player === 0 ? pit + 1 : pit - 6;
+        const name = player === 0 ? "You" : "CPU";
+        if (isGameOver(fb)) {
+          const fin = finalizeBoard(fb);
+          // Update marble map for finalized board
+          const finMM = {};
+          for (let i = 0; i < 14; i++) finMM[i] = [...(mm[i] || [])];
+          for (let i = 0; i < 6; i++) { finMM[6].push(...finMM[i]); finMM[i] = []; }
+          for (let i = 7; i < 13; i++) { finMM[13].push(...finMM[i]); finMM[i] = []; }
+          // Sync counts
+          for (let i = 0; i < 14; i++) {
+            while (finMM[i].length < fin[i]) finMM[i].push(generateMarbleIds(1)[0]);
+            while (finMM[i].length > fin[i]) finMM[i].pop();
+          }
+          setBoard(fin); setMarbleMap(finMM); setGameOver(true);
+          const w = getWinner(fin);
+          const wm = w === 0 ? "You win!" : w === 1 ? "CPU wins!" : "It's a tie!";
+          setMessage("Game Over - " + wm + " (" + fin[6] + " vs " + fin[13] + ")");
+          setHistory(h => [...h, { id: ++historyIdRef.current, player: name, pit: pitLabel, extraTurn, msg: wm }]);
+          setStrategy(null); return;
+        }
+        setHistory(h => [...h, { id: ++historyIdRef.current, player: name, pit: pitLabel, extraTurn }]);
+
+        const doCpuTurn = (currentBoard, marbles, lvl, delay) => {
+          setMessage((player === 0 ? "You played pit " + pitLabel + ". " : name + " played pit " + pitLabel + " - Extra turn! ") + "CPU thinking...");
+          safeTimeout(async () => {
+            if (!mountedRef.current) return;
+            const data = await postWorker({ type: "cpuMove", board: currentBoard, player: 1, level: lvl });
+            if (!mountedRef.current) return;
+            const cp = data.move;
+            if (cp >= 0) animateSow(currentBoard, marbles, cp, 1, (fb2, et2, mm2) => finishMove(fb2, et2, 1, cp, isTraining, level, mm2));
+          }, delay);
+        };
+
+        if (extraTurn) {
+          setMessage(name + " played pit " + pitLabel + " - Extra turn!");
+          if (player === 0) {
+            setCurrentPlayer(0);
+            if (isTraining) {
+              postWorker({ type: "strategy", board: fb, player: 0 }).then(data => {
+                if (mountedRef.current) setStrategy(data.result);
+              });
+            }
+          } else {
+            setCurrentPlayer(1);
+            doCpuTurn(fb, mm, level, 600);
+          }
+        } else if (player === 0) {
+          setCurrentPlayer(1);
+          doCpuTurn(fb, mm, level, isTraining ? 500 : 800);
+        } else {
+          setMessage("CPU played pit " + pitLabel + ". Your turn!");
+          setCurrentPlayer(0);
+          if (isTraining) {
+            postWorker({ type: "strategy", board: fb, player: 0 }).then(data => {
+              if (mountedRef.current) setStrategy(data.result);
+            });
+          }
+        }
+      }, [animateSow]);
+
+      const handlePitClick = (pit) => {
+        if (gameOver || busy || currentPlayer !== 0) return;
+        if (board[pit] === 0 || pit < 0 || pit > 5) return;
+        // Save undo snapshot before the move
+        setUndoStack(prev => [...prev, {
+          board: [...board],
+          marbleMap: JSON.parse(JSON.stringify(marbleMap)),
+          currentPlayer,
+          history: [...history],
+          historyId: historyIdRef.current,
+          message,
+          strategy,
+        }]);
+        setStrategy(null);
+        animateSow(board, marbleMap, pit, 0, (fb, et, mm) => finishMove(fb, et, 0, pit, training, cpuLevel, mm));
+      };
+
+      const handleUndo = () => {
+        if (undoStack.length === 0 || busy || !training) return;
+        clearTimer();
+        const prev = undoStack[undoStack.length - 1];
+        setUndoStack(s => s.slice(0, -1));
+        setBoard(prev.board);
+        setMarbleMap(prev.marbleMap);
+        setCurrentPlayer(prev.currentPlayer);
+        setHistory(prev.history);
+        historyIdRef.current = prev.historyId;
+        setMessage(prev.message);
+        setStrategy(prev.strategy);
+        setGameOver(false);
+        setBusy(false);
+        setActivePit(-1);
+        setStonesInHand(0);
+        // Recompute strategy
+        if (prev.currentPlayer === 0) {
+          postWorker({ type: "strategy", board: prev.board, player: 0 }).then(data => {
+            if (mountedRef.current) setStrategy(data.result);
+          });
+        }
+      };
+
+      const backToSetup = () => { clearTimer(); setScreen("setup"); };
+
+      if (screen === "setup") {
+        return (
+          <div style={{ minHeight: "100vh", background: "linear-gradient(145deg, #1a0e07 0%, #2d1810 50%, #1a0e07 100%)", fontFamily: "'Georgia', 'Times New Roman', serif", color: "#e8d5a3", display: "flex", flexDirection: "column", alignItems: "center", padding: "20px 16px" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <h1 style={{ fontSize: "min(10vw, 44px)", fontWeight: "bold", color: "#daa557", textShadow: "0 0 30px rgba(218,165,87,0.3), 2px 2px 0 #6b4226", letterSpacing: 4, margin: 0 }}>MANCALA</h1>
+              <p style={{ color: "#6b4a2a", fontSize: 13, marginTop: 4, letterSpacing: 3 }}>STONE STRATEGY</p>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 24, justifyContent: "center" }}>
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} style={{
+                  width: 24, height: 24, borderRadius: "50%",
+                  background: "radial-gradient(circle at 30% 25%, rgba(255,255,255,0.6), #c8a050 30%, #a07830 58%, #886828 82%, #705520 100%)",
+                  boxShadow: "inset -2px -3px 5px rgba(0,0,0,0.3), inset 2px 2px 3px rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.35)",
+                }} />
+              ))}
+            </div>
+            <div style={{ background: "rgba(42,26,14,0.85)", border: "1px solid #5a3a20", borderRadius: 16, padding: 24, maxWidth: 460, width: "100%", boxShadow: "0 10px 40px rgba(0,0,0,0.5)" }}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", marginBottom: 8, color: "#daa557", fontSize: 12, letterSpacing: 1 }}>CPU DIFFICULTY</label>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {["rookie", "sharp", "counter"].map(lv => (
+                    <button key={lv} onClick={() => setCpuLevel(lv)} style={{
+                      flex: 1, padding: "10px 4px", borderRadius: 8, border: "none",
+                      background: cpuLevel === lv ? "linear-gradient(135deg, #c0952a, #daa557)" : "rgba(90,58,32,0.5)",
+                      color: cpuLevel === lv ? "#1a0e07" : CPU_CLR[lv],
+                      fontWeight: "bold", fontSize: 12, cursor: "pointer", fontFamily: "'Georgia', serif",
+                    }}>{CPU_LABELS[lv]}</button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => startGame(false)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 19, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 2, boxShadow: "0 4px 20px rgba(218,165,87,0.3)" }}>PLAY</button>
+              <button onClick={() => startGame(true)} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "1px solid #3498db", background: "rgba(52,152,219,0.12)", color: "#3498db", fontWeight: "bold", fontSize: 15, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1, marginTop: 8 }}>TRAINING MODE</button>
+              <div style={{ marginTop: 14, padding: 12, background: "rgba(0,0,0,0.3)", borderRadius: 10, fontSize: 11, color: "#8a6a4a", lineHeight: 1.7 }}>
+                <strong style={{ color: "#daa557" }}>CPU:</strong> <span style={{ color: CPU_CLR.rookie }}>Rookie</span> plays casual - <span style={{ color: CPU_CLR.sharp }}>Sharp</span> hunts captures - <span style={{ color: CPU_CLR.counter }}>Counter</span> thinks 8 moves deep
+              </div>
+              <div style={{ marginTop: 8, padding: 12, background: "rgba(0,0,0,0.3)", borderRadius: 10, fontSize: 11, color: "#8a6a4a", lineHeight: 1.7 }}>
+                <strong style={{ color: "#daa557" }}>Rules:</strong> Sow stones counter-clockwise. Land in your store = extra turn. Land in empty pit on your side = capture opposite. Most stones wins.
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const isHumanTurn = currentPlayer === 0 && !gameOver && !busy;
+      const validMoves = isHumanTurn ? getValidMoves(board, 0) : [];
+
+      const renderPit = (idx, isPlayer) => {
+        const count = board[idx];
+        const canPlay = isPlayer && validMoves.includes(idx);
+        const isBest = strategy && strategy.bestMove === idx;
+        const isActive = activePit === idx;
+        const maxShow = 10;
+        const sz = count > 6 ? 13 : 17;
+        const ids = marbleMap[idx] || [];
+        return (
+          <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            {!isPlayer && <div style={{ fontSize: 9, color: "#6a5030", marginBottom: 2 }}>{idx - 6}</div>}
+            <div
+              onClick={() => isPlayer && handlePitClick(idx)}
+              style={{
+                width: "100%", maxWidth: 64, aspectRatio: "1", borderRadius: "50%",
+                background: isActive ? "radial-gradient(circle, #3a6a2a, #1a3a1a)"
+                  : canPlay ? (isBest ? "radial-gradient(circle, #2a5a2a, #1a3a1a)" : "radial-gradient(circle, #5a4030, #3a2518)")
+                  : "radial-gradient(circle, #3a2518, #2a1a10)",
+                border: isActive ? "2px solid #7cfc00" : isBest ? "2px solid #4CAF50" : canPlay ? "2px solid #6b4226" : "2px solid #3a2518",
+                boxShadow: isActive ? "0 0 18px rgba(124,252,0,0.5), inset 0 3px 10px rgba(0,0,0,0.5)"
+                  : isBest ? "0 0 12px rgba(76,175,80,0.4), inset 0 3px 10px rgba(0,0,0,0.5)"
+                  : "inset 0 3px 10px rgba(0,0,0,0.5)",
+                display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 1,
+                cursor: canPlay ? "pointer" : "default",
+                transition: "border 0.12s, box-shadow 0.12s", position: "relative",
+                opacity: count === 0 && isPlayer ? 0.4 : 1, padding: 4, overflow: "hidden",
+              }}
+            >
+              {ids.slice(0, maxShow).map((mid) => <Marble key={mid} id={mid} size={sz} />)}
+              {count > maxShow && <div style={{ fontSize: 7, color: "#8a7a5a", fontWeight: "bold" }}>+{count - maxShow}</div>}
+              {count > 0 && (
+                <div style={{ position: "absolute", top: -6, right: -4, fontSize: 9, fontWeight: "bold", color: isActive ? "#7cfc00" : isBest ? "#4CAF50" : "#daa557", background: "rgba(20,12,6,0.92)", borderRadius: 6, padding: "0 3px", lineHeight: "14px", minWidth: 14, textAlign: "center", border: "1px solid #4a3a20" }}>{count}</div>
+              )}
+              {isBest && !busy && <div style={{ position: "absolute", bottom: -9, fontSize: 7, color: "#4CAF50", fontWeight: "bold" }}>BEST</div>}
+            </div>
+            {isPlayer && <div style={{ fontSize: 9, color: canPlay ? "#daa557" : "#4a3a20", marginTop: 3 }}>{idx + 1}</div>}
+          </div>
+        );
+      };
+
+      const renderStore = (pitIdx, label, color) => {
+        const count = board[pitIdx];
+        const isActive = activePit === pitIdx;
+        const maxShow = 20;
+        const sz = count > 14 ? 10 : 13;
+        const ids = marbleMap[pitIdx] || [];
+        return (
+          <div style={{
+            width: 66, borderRadius: 33,
+            background: isActive ? "radial-gradient(circle, " + color + "33, #1a1208)" : "radial-gradient(circle, #3a2518, #1a1208)",
+            border: isActive ? "2px solid " + color : "2px solid #4a3020",
+            boxShadow: isActive ? "0 0 15px " + color + "55, inset 0 4px 16px rgba(0,0,0,0.6)" : "inset 0 4px 16px rgba(0,0,0,0.6)",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: "8px 4px", transition: "border 0.12s, box-shadow 0.12s",
+          }}>
+            <div style={{ fontSize: 8, color: "#7a5a3a", marginBottom: 3, letterSpacing: 1 }}>{label}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 1, flex: 1 }}>
+              {ids.slice(0, maxShow).map((mid) => <Marble key={mid} id={mid} size={sz} />)}
+              {count > maxShow && <div style={{ fontSize: 7, color: "#7a5a3a" }}>+{count - maxShow}</div>}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: "bold", color: color, marginTop: 4 }}>{count}</div>
+          </div>
+        );
+      };
+
+      const canUndo = training && undoStack.length > 0 && !busy && !gameOver;
+
+      return (
+        <div style={{ minHeight: "100vh", background: "linear-gradient(145deg, #1a0e07 0%, #2d1810 50%, #1a0e07 100%)", fontFamily: "'Georgia', 'Times New Roman', serif", color: "#e8d5a3", display: "flex", flexDirection: "column" }}>
+          <style>{`@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }`}</style>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(0,0,0,0.3)", borderBottom: "1px solid rgba(218,165,87,0.15)" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: "bold", color: "#daa557", letterSpacing: 2 }}>MANCALA</div>
+              {training ? <div style={{ fontSize: 10, color: "#3498db", fontWeight: "bold", letterSpacing: 1 }}>TRAINING vs {CPU_LABELS[cpuLevel]}</div>
+                : <div style={{ fontSize: 10, color: CPU_CLR[cpuLevel] }}>vs {CPU_LABELS[cpuLevel]}</div>}
+            </div>
+            <div style={{ textAlign: "center" }}>
+              {stonesInHand > 0 ? (
+                <div style={{ fontSize: 12, color: "#7cfc00", animation: "pulse 0.6s infinite", fontWeight: "bold" }}>Sowing... {stonesInHand} left</div>
+              ) : (
+                <div style={{ fontSize: 14, fontWeight: "bold", color: gameOver ? "#daa557" : currentPlayer === 0 ? "#4CAF50" : "#e67e22" }}>
+                  {gameOver ? "GAME OVER" : currentPlayer === 0 ? "YOUR TURN" : "CPU THINKING..."}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {canUndo && (
+                <button onClick={handleUndo} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #3498db", background: "rgba(52,152,219,0.15)", color: "#3498db", fontSize: 11, cursor: "pointer", fontFamily: "'Georgia', serif", fontWeight: "bold" }}>Undo</button>
+              )}
+              <button onClick={backToSetup} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #5a3a20", background: "rgba(60,40,20,0.5)", color: "#daa557", fontSize: 11, cursor: "pointer", fontFamily: "'Georgia', serif" }}>Lobby</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 28, padding: "6px 14px", background: "rgba(0,0,0,0.15)" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "#4CAF50", letterSpacing: 1 }}>YOU</div>
+              <div style={{ fontSize: 24, fontWeight: "bold", color: "#4CAF50" }}>{board[6]}</div>
+            </div>
+            <div style={{ fontSize: 16, color: "#3a2a1a", alignSelf: "center" }}>vs</div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "#e67e22", letterSpacing: 1 }}>CPU</div>
+              <div style={{ fontSize: 24, fontWeight: "bold", color: "#e67e22" }}>{board[13]}</div>
+            </div>
+          </div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 6px" }}>
+            <div style={{
+              background: "linear-gradient(145deg, #5a3a20, #3a2210, #5a3a20)",
+              borderRadius: 32, padding: "14px 8px", width: "100%", maxWidth: 540,
+              border: "3px solid #6b4226",
+              boxShadow: "0 10px 40px rgba(0,0,0,0.6), inset 0 2px 0 rgba(218,165,87,0.08)",
+              display: "flex", alignItems: "stretch", gap: 6, minHeight: 190,
+            }}>
+              {renderStore(13, "CPU", "#e67e22")}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
+                <div style={{ display: "flex", gap: 3 }}>{[12,11,10,9,8,7].map(i => renderPit(i, false))}</div>
+                <div style={{ fontSize: 8, color: "#3a2a18", display: "flex", justifyContent: "space-between", padding: "0 4px" }}>
+                  <span>CPU side</span><span>Your side</span>
+                </div>
+                <div style={{ display: "flex", gap: 3 }}>{[0,1,2,3,4,5].map(i => renderPit(i, true))}</div>
+              </div>
+              {renderStore(6, "YOU", "#4CAF50")}
+            </div>
+          </div>
+          <div style={{ textAlign: "center", padding: "6px 16px", fontSize: 13, color: gameOver ? "#daa557" : "#e8d5a3", fontWeight: gameOver ? "bold" : "normal", minHeight: 28 }}>{message}</div>
+          {training && strategy && !gameOver && currentPlayer === 0 && !busy && (
+            <div style={{ margin: "0 auto", width: "100%", maxWidth: 500, padding: "10px 16px", borderRadius: 12, background: "rgba(0,0,0,0.4)", border: "1px solid rgba(52,152,219,0.3)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                <span style={{ fontSize: 13, fontWeight: "bold", color: "#3498db", letterSpacing: 1 }}>STRATEGY</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#daa557", lineHeight: 1.5, marginBottom: 6 }}>{strategy.tip}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {strategy.analyses.map(a => {
+                  const isBest = a.pit === strategy.bestMove;
+                  return (
+                    <div key={a.pit} style={{
+                      padding: "3px 7px", borderRadius: 6, fontSize: 10,
+                      background: isBest ? "rgba(218,165,87,0.2)" : "rgba(60,40,20,0.4)",
+                      border: isBest ? "1px solid #daa557" : "1px solid rgba(60,40,20,0.3)",
+                      color: isBest ? "#daa557" : "#7a5a3a",
+                    }}>
+                      <span style={{ fontWeight: "bold" }}>Pit {a.pit + 1}</span>
+                      {a.extraTurn && <span style={{ color: "#4CAF50", marginLeft: 3 }}>+turn</span>}
+                      {a.captured > 0 && <span style={{ color: "#e67e22", marginLeft: 3 }}>+{a.captured}cap</span>}
+                      <span style={{ marginLeft: 3, color: a.scoreDiff > 0 ? "#4CAF50" : a.scoreDiff < 0 ? "#e74c3c" : "#5a4a3a" }}>
+                        {a.scoreDiff > 0 ? "+" + a.scoreDiff : a.scoreDiff}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {gameOver && (
+            <div style={{ textAlign: "center", padding: "8px 0 12px", display: "flex", gap: 8, justifyContent: "center" }}>
+              <button onClick={() => startGame(training)} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #c0952a, #daa557, #c0952a)", color: "#1a0e07", fontWeight: "bold", fontSize: 16, cursor: "pointer", fontFamily: "'Georgia', serif" }}>PLAY AGAIN</button>
+              <button onClick={backToSetup} style={{ padding: "12px 28px", borderRadius: 10, border: "1px solid #5a3a20", background: "rgba(60,40,20,0.5)", color: "#daa557", fontWeight: "bold", fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>LOBBY</button>
+            </div>
+          )}
+          {history.length > 0 && (
+            <div style={{ padding: "6px 12px", background: "rgba(0,0,0,0.3)", borderTop: "1px solid rgba(218,165,87,0.1)", maxHeight: 90, overflowY: "auto" }}>
+              <div style={{ fontSize: 9, color: "#4a3a20", marginBottom: 3, letterSpacing: 1 }}>HISTORY</div>
+              {[...history].reverse().slice(0, 8).map((h) => (
+                <div key={h.id} style={{ fontSize: 10, color: "#6a5030", padding: "1px 0" }}>
+                  <span style={{ color: h.player === "You" ? "#4CAF50" : "#e67e22" }}>{h.player}</span>
+                  {" > Pit "}{h.pit}
+                  {h.extraTurn && <span style={{ color: "#daa557", marginLeft: 4 }}>+extra turn</span>}
+                  {h.msg && <span style={{ color: "#daa557", marginLeft: 4, fontWeight: "bold" }}> {h.msg}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const rootEl = document.getElementById("root");
+    if (!rootEl) throw new Error("Root element not found");
+    const root = ReactDOM.createRoot(rootEl);
+    root.render(<Mancala />);
+  </script>
+</body>
+</html>
