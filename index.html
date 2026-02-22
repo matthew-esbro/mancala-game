@@ -144,6 +144,22 @@
   <script type="text/babel">
     const { useState, useCallback, useRef, useEffect } = React;
 
+    // ── Responsive scaling ──
+    function useWindowWidth() {
+      const [width, setWidth] = useState(window.innerWidth);
+      useEffect(() => {
+        const onResize = () => setWidth(window.innerWidth);
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+      }, []);
+      return width;
+    }
+    function getScale(width) {
+      if (width >= 540) return 1.0;
+      if (width <= 340) return 0.55;
+      return 0.55 + (width - 340) / (540 - 340) * 0.45;
+    }
+
     // ── Create Web Worker from inline script ──
     function createAIWorker() {
       const el = document.getElementById("ai-worker");
@@ -279,6 +295,8 @@
     const CPU_CLR = { rookie: "#e67e22", sharp: "#3498db", counter: "#9b59b6" };
 
     function Mancala() {
+      const windowWidth = useWindowWidth();
+      const scale = getScale(windowWidth);
       const [board, setBoard] = useState(initBoard());
       const [marbleMap, setMarbleMap] = useState(initMarbleMap);
       const [screen, setScreen] = useState("setup");
@@ -584,16 +602,17 @@
         const canPlay = isPlayer && validMoves.includes(idx);
         const isBest = strategy && strategy.bestMove === idx;
         const isActive = activePit === idx;
-        const maxShow = 10;
-        const sz = count > 6 ? 13 : 17;
+        const maxShow = scale < 0.8 ? 6 : 10;
+        const sz = Math.round((count > 6 ? 13 : 17) * scale);
         const ids = marbleMap[idx] || [];
+        const pitMax = Math.round(64 * scale);
         return (
           <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
             {!isPlayer && <div style={{ fontSize: 9, color: "#6a5030", marginBottom: 2 }}>{idx - 6}</div>}
             <div
               onClick={() => isPlayer && handlePitClick(idx)}
               style={{
-                width: "100%", maxWidth: 64, aspectRatio: "1", borderRadius: "50%",
+                width: "100%", maxWidth: pitMax, aspectRatio: "1", borderRadius: "50%",
                 background: isActive ? "radial-gradient(circle, #3a6a2a, #1a3a1a)"
                   : canPlay ? (isBest ? "radial-gradient(circle, #2a5a2a, #1a3a1a)" : "radial-gradient(circle, #5a4030, #3a2518)")
                   : "radial-gradient(circle, #3a2518, #2a1a10)",
@@ -622,12 +641,13 @@
       const renderStore = (pitIdx, label, color) => {
         const count = board[pitIdx];
         const isActive = activePit === pitIdx;
-        const maxShow = 20;
-        const sz = count > 14 ? 10 : 13;
+        const maxShow = scale < 0.8 ? 12 : 20;
+        const sz = Math.round((count > 14 ? 10 : 13) * scale);
         const ids = marbleMap[pitIdx] || [];
+        const storeW = Math.round(66 * scale);
         return (
           <div style={{
-            width: 66, borderRadius: 33,
+            width: storeW, borderRadius: Math.round(storeW / 2),
             background: isActive ? "radial-gradient(circle, " + color + "33, #1a1208)" : "radial-gradient(circle, #3a2518, #1a1208)",
             border: isActive ? "2px solid " + color : "2px solid #4a3020",
             boxShadow: isActive ? "0 0 15px " + color + "55, inset 0 4px 16px rgba(0,0,0,0.6)" : "inset 0 4px 16px rgba(0,0,0,0.6)",
@@ -639,7 +659,7 @@
               {ids.slice(0, maxShow).map((mid) => <Marble key={mid} id={mid} size={sz} />)}
               {count > maxShow && <div style={{ fontSize: 7, color: "#7a5a3a" }}>+{count - maxShow}</div>}
             </div>
-            <div style={{ fontSize: 18, fontWeight: "bold", color: color, marginTop: 4 }}>{count}</div>
+            <div style={{ fontSize: Math.round(18 * scale), fontWeight: "bold", color: color, marginTop: 4 }}>{count}</div>
           </div>
         );
       };
@@ -685,10 +705,10 @@
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "12px 6px" }}>
             <div style={{
               background: "linear-gradient(145deg, #5a3a20, #3a2210, #5a3a20)",
-              borderRadius: 32, padding: "14px 8px", width: "100%", maxWidth: 540,
+              borderRadius: Math.round(32 * scale), padding: scale < 0.8 ? "10px 4px" : "14px 8px", width: "100%", maxWidth: 540,
               border: "3px solid #6b4226",
               boxShadow: "0 10px 40px rgba(0,0,0,0.6), inset 0 2px 0 rgba(218,165,87,0.08)",
-              display: "flex", alignItems: "stretch", gap: 6, minHeight: 190,
+              display: "flex", alignItems: "stretch", gap: Math.round(6 * scale), minHeight: Math.round(190 * scale),
             }}>
               {renderStore(13, "CPU", "#e67e22")}
               <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
