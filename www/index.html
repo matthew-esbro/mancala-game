@@ -1231,6 +1231,11 @@
                 <button onClick={() => setShowOptions(true)} style={{ flex: 1, padding: "9px 4px", borderRadius: 8, border: "1px solid " + sk.panelBorder, background: "rgba(0,0,0,0.12)", color: sk.accent, fontSize: 12, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1 }}>OPTIONS</button>
                 <button onClick={() => setShowStats(true)} style={{ flex: 1, padding: "9px 4px", borderRadius: 8, border: "1px solid " + sk.panelBorder, background: "rgba(0,0,0,0.12)", color: sk.accent, fontSize: 12, cursor: "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1 }}>STATS</button>
               </div>
+              {!adsRemoved && iapProduct && (
+                <button onClick={handleRemoveAds} disabled={purchaseLoading} style={{ width: "100%", padding: "8px 4px", borderRadius: 8, border: "1px solid #27ae60", background: purchaseLoading ? "rgba(39,174,96,0.05)" : "rgba(39,174,96,0.10)", color: "#27ae60", fontWeight: "bold", fontSize: 12, cursor: purchaseLoading ? "default" : "pointer", fontFamily: "'Georgia', serif", letterSpacing: 1, marginTop: 8, opacity: purchaseLoading ? 0.6 : 1 }}>
+                  {purchaseLoading ? "PROCESSING..." : "REMOVE ADS · " + iapProduct.priceString}
+                </button>
+              )}
             </div>
             {renderPromo()}
             </div>
