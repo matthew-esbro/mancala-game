@@ -563,6 +563,8 @@
       // back to lobby). Async work captures the value before awaiting the worker
       // and bails if it changed, so a stale CPU move can never land on a fresh board.
       const genRef = useRef(0);
+      // Timestamp of the last shown interstitial, to enforce a minimum gap.
+      const lastInterstitialRef = useRef(0);
       const workerRef = useRef(null);
       const workerCallbacks = useRef({});
       const workerIdRef = useRef(0);
@@ -1063,20 +1065,29 @@
         }
       };
 
+      // Show an interstitial at most once per INTERSTITIAL_MIN_GAP_MS, so two
+      // ad-triggering actions close together (e.g. Play Again then Lobby) don't
+      // stack back-to-back interstitials.
+      const INTERSTITIAL_MIN_GAP_MS = 10000;
+      const maybeShowInterstitial = async () => {
+        if (adsRemoved || !interstitialLoaded || typeof Capacitor === 'undefined') return;
+        if (Date.now() - lastInterstitialRef.current < INTERSTITIAL_MIN_GAP_MS) return;
+        try {
+          const { AdMob } = Capacitor.Plugins;
+          if (AdMob) {
+            lastInterstitialRef.current = Date.now();
+            await AdMob.showInterstitial();
+            AdMob.prepareInterstitial({ adId: 'ca-app-pub-9690726274194822/6499562065' })
+              .then(() => setInterstitialLoaded(true))
+              .catch(() => setInterstitialLoaded(false));
+          }
+        } catch (err) { console.error('Interstitial:', err); }
+      };
+
       const backToSetup = async () => {
         clearTimer();
         genRef.current += 1; // invalidate any CPU move already in flight
-        if (!adsRemoved && interstitialLoaded && typeof Capacitor !== 'undefined') {
-          try {
-            const { AdMob } = Capacitor.Plugins;
-            if (AdMob) {
-              await AdMob.showInterstitial();
-              AdMob.prepareInterstitial({ adId: 'ca-app-pub-9690726274194822/6499562065' })
-                .then(() => setInterstitialLoaded(true))
-                .catch(() => setInterstitialLoaded(false));
-            }
-          } catch (err) { console.error('Interstitial:', err); }
-        }
+        await maybeShowInterstitial();
         setScreen("setup");
       };
 
@@ -1089,17 +1100,7 @@
           setGoFirst(next);
           try { localStorage.setItem('mancalaGoFirst', String(next)); } catch (e) {}
         }
-        if (!adsRemoved && interstitialLoaded) {
-          try {
-            const { AdMob } = Capacitor.Plugins;
-            if (AdMob) {
-              await AdMob.showInterstitial();
-              AdMob.prepareInterstitial({ adId: 'ca-app-pub-9690726274194822/6499562065' })
-                .then(() => setInterstitialLoaded(true))
-                .catch(() => setInterstitialLoaded(false));
-            }
-          } catch (err) { console.error('Interstitial:', err); }
-        }
+        await maybeShowInterstitial();
         startGame(training, next, gameMode);
       };
 
