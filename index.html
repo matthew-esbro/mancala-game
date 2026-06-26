@@ -1068,7 +1068,7 @@
       // Show an interstitial at most once per INTERSTITIAL_MIN_GAP_MS, so two
       // ad-triggering actions close together (e.g. Play Again then Lobby) don't
       // stack back-to-back interstitials.
-      const INTERSTITIAL_MIN_GAP_MS = 10000;
+      const INTERSTITIAL_MIN_GAP_MS = 30000;
       const maybeShowInterstitial = async () => {
         if (adsRemoved || !interstitialLoaded || typeof Capacitor === 'undefined') return;
         if (Date.now() - lastInterstitialRef.current < INTERSTITIAL_MIN_GAP_MS) return;
