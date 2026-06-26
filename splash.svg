@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732" width="2732" height="2732">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#2d1a0e"/>
+      <stop offset="100%" stop-color="#1a0e07"/>
+    </radialGradient>
+    <radialGradient id="pit" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#0d0704"/>
+      <stop offset="70%" stop-color="#130a05"/>
+      <stop offset="100%" stop-color="#2a1608"/>
+    </radialGradient>
+    <radialGradient id="rim" cx="50%" cy="40%" r="50%">
+      <stop offset="85%" stop-color="transparent"/>
+      <stop offset="95%" stop-color="#3d2415"/>
+      <stop offset="100%" stop-color="#4a2e1a"/>
+    </radialGradient>
+    <radialGradient id="stone-amber" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#f5c842"/>
+      <stop offset="60%" stop-color="#d4942a"/>
+      <stop offset="100%" stop-color="#a06820"/>
+    </radialGradient>
+    <radialGradient id="stone-teal" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#5ec4b8"/>
+      <stop offset="60%" stop-color="#3a9e94"/>
+      <stop offset="100%" stop-color="#267a72"/>
+    </radialGradient>
+    <radialGradient id="stone-coral" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#f08a6e"/>
+      <stop offset="60%" stop-color="#d4654a"/>
+      <stop offset="100%" stop-color="#a84832"/>
+    </radialGradient>
+    <radialGradient id="stone-cream" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#f5e6c8"/>
+      <stop offset="60%" stop-color="#d4c4a0"/>
+      <stop offset="100%" stop-color="#b0a080"/>
+    </radialGradient>
+    <radialGradient id="stone-blue" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#6aaaf0"/>
+      <stop offset="60%" stop-color="#4a82d4"/>
+      <stop offset="100%" stop-color="#3260a8"/>
+    </radialGradient>
+    <radialGradient id="stone-plum" cx="38%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#c07ae0"/>
+      <stop offset="60%" stop-color="#9a58b8"/>
+      <stop offset="100%" stop-color="#744090"/>
+    </radialGradient>
+    <filter id="stoneHighlight">
+      <feDropShadow dx="1" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Full background -->
+  <rect width="2732" height="2732" fill="url(#bg)"/>
+
+  <!-- Subtle wood grain texture -->
+  <g opacity="0.05" stroke="#000" stroke-width="1.5">
+    <path d="M0 500 Q683 480 1366 510 Q2049 530 2732 490" fill="none"/>
+    <path d="M0 900 Q683 890 1366 910 Q2049 920 2732 895" fill="none"/>
+    <path d="M0 1300 Q683 1320 1366 1290 Q2049 1300 2732 1320" fill="none"/>
+    <path d="M0 1700 Q683 1690 1366 1710 Q2049 1700 2732 1690" fill="none"/>
+    <path d="M0 2100 Q683 2110 1366 2090 Q2049 2100 2732 2110" fill="none"/>
+  </g>
+
+  <!-- Centered pit and stones (scaled and centered at 1366, 1366) -->
+  <g transform="translate(1366, 1300)">
+    <!-- Pit outer rim -->
+    <ellipse cx="0" cy="0" rx="380" ry="370" fill="#3a2010" opacity="0.6"/>
+    <ellipse cx="0" cy="-2" rx="370" ry="358" fill="#2a1608"/>
+
+    <!-- Pit inner depression -->
+    <ellipse cx="0" cy="-5" rx="340" ry="330" fill="url(#pit)"/>
+    <ellipse cx="0" cy="-5" rx="340" ry="330" fill="url(#rim)"/>
+
+    <!-- Inner rim highlight -->
+    <ellipse cx="0" cy="-5" rx="340" ry="330" fill="none" stroke="#4a3020" stroke-width="2" opacity="0.4"/>
+    <path d="M-308 -80 Q-150 -160 0 -170 Q150 -160 308 -80" fill="none" stroke="#5a4030" stroke-width="1.5" opacity="0.3"/>
+
+    <!-- Stones -->
+    <g filter="url(#stoneHighlight)">
+      <circle cx="-100" cy="80" r="58" fill="url(#stone-cream)"/>
+      <circle cx="80" cy="90" r="56" fill="url(#stone-teal)"/>
+      <circle cx="-10" cy="100" r="54" fill="url(#stone-blue)"/>
+
+      <circle cx="-75" cy="-20" r="60" fill="url(#stone-coral)"/>
+      <circle cx="70" cy="-10" r="57" fill="url(#stone-amber)"/>
+      <circle cx="0" cy="10" r="59" fill="url(#stone-plum)"/>
+      <circle cx="-150" cy="30" r="52" fill="url(#stone-teal)"/>
+      <circle cx="145" cy="20" r="53" fill="url(#stone-cream)"/>
+
+      <circle cx="-40" cy="-80" r="56" fill="url(#stone-amber)"/>
+      <circle cx="45" cy="-90" r="54" fill="url(#stone-blue)"/>
+      <circle cx="0" cy="-50" r="52" fill="url(#stone-coral)"/>
+    </g>
+
+    <!-- Specular highlights -->
+    <g opacity="0.5">
+      <ellipse cx="-50" cy="-90" rx="16" ry="9" fill="white" opacity="0.35" transform="rotate(-15 -50 -90)"/>
+      <ellipse cx="35" cy="-100" rx="15" ry="8" fill="white" opacity="0.35" transform="rotate(-10 35 -100)"/>
+      <ellipse cx="-10" cy="-60" rx="14" ry="8" fill="white" opacity="0.3" transform="rotate(-20 -10 -60)"/>
+      <ellipse cx="-85" cy="-30" rx="16" ry="9" fill="white" opacity="0.3" transform="rotate(-15 -85 -30)"/>
+      <ellipse cx="60" cy="-20" rx="15" ry="8" fill="white" opacity="0.3" transform="rotate(-10 60 -20)"/>
+      <ellipse cx="-10" cy="0" rx="15" ry="8" fill="white" opacity="0.25" transform="rotate(-15 -10 0)"/>
+    </g>
+  </g>
+</svg>

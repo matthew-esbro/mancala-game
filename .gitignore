@@ -1,0 +1,24 @@
+node_modules/
+.DS_Store
+*.tsbuildinfo
+
+# Build artifacts / archives (large, regenerated)
+build/
+DerivedData/
+*.xcarchive
+
+# iOS: generated web copy, user state, and the Firebase config.
+# NOTE: this repo auto-publishes to GitHub Pages on push to main, so the
+# Firebase plist (contains an API key) is kept OUT of git deliberately.
+ios/App/App/public/
+ios/App/Pods/
+*.xcuserstate
+**/xcuserdata/
+ios/App/App/GoogleService-Info.plist
+
+# Android: generated build output + Firebase config
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/google-services.json
