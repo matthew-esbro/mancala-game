@@ -1128,9 +1128,11 @@
         setPurchaseLoading(true);
         try {
           const { NativePurchases } = Capacitor.Plugins;
-          const result = await NativePurchases.restorePurchases();
-          const txns = result.transactions || [];
-          if (txns.some(t => t.productIdentifier === 'com.esbrolabs.mancala.removeads')) {
+          // restorePurchases() returns void; the owned purchases come from getPurchases().
+          await NativePurchases.restorePurchases();
+          const res = await NativePurchases.getPurchases();
+          const purchases = (res && res.purchases) || [];
+          if (purchases.some(t => t.productIdentifier === 'com.esbrolabs.mancala.removeads')) {
             localStorage.setItem('adsRemoved', 'true');
             setAdsRemoved(true);
             try { const { AdMob } = Capacitor.Plugins; if (AdMob) await AdMob.removeBanner(); } catch(e) {}
@@ -1175,6 +1177,22 @@
           <div style={{ flexShrink: 0, padding: "7px 16px", borderRadius: 20, background: sk.btnActive, color: sk.accentText, fontSize: 12, fontWeight: "bold", letterSpacing: 1 }}>GET</div>
         </div>
       );
+
+      // ATT/consent pre-prompt overlay, rendered regardless of screen so the
+      // awaited promise in initAds can never be orphaned if the user taps PLAY
+      // before it appears (which would otherwise hang ad init for the session).
+      const prePromptOverlay = showPrePrompt ? (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "linear-gradient(145deg, " + sk.bg2 + ", " + sk.bg1 + ")", borderRadius: 16, padding: "28px 24px", maxWidth: 320, width: "90%", border: "2px solid " + sk.boardBorder, textAlign: "center", fontFamily: "'Georgia', serif" }}>
+            <div style={{ fontSize: 18, fontWeight: "bold", color: sk.accent, marginBottom: 12 }}>Mancala is supported by ads</div>
+            <div style={{ fontSize: 14, color: sk.text, lineHeight: 1.6, marginBottom: 20 }}>Allowing tracking helps keep the game free by showing more relevant ads.</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => { setShowPrePrompt(false); prePromptResolveRef.current?.(false); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid " + sk.panelBorder, background: sk.btnPassive, color: sk.textDim, fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>Not Now</button>
+              <button onClick={() => { setShowPrePrompt(false); prePromptResolveRef.current?.(true); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: sk.btnActive, color: sk.accentText, fontWeight: "bold", fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>Continue</button>
+            </div>
+          </div>
+        </div>
+      ) : null;
 
       if (screen === "setup") {
         const totalGames = STATS_LEVELS.reduce((n, lv) => { const r = stats.levels[lv]; return n + r.w + r.l + r.t; }, 0);
@@ -1307,18 +1325,7 @@
                 </div>
               </div>
             )}
-            {showPrePrompt && (
-              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ background: "linear-gradient(145deg, " + sk.bg2 + ", " + sk.bg1 + ")", borderRadius: 16, padding: "28px 24px", maxWidth: 320, width: "90%", border: "2px solid " + sk.boardBorder, textAlign: "center", fontFamily: "'Georgia', serif" }}>
-                  <div style={{ fontSize: 18, fontWeight: "bold", color: sk.accent, marginBottom: 12 }}>Mancala is supported by ads</div>
-                  <div style={{ fontSize: 14, color: sk.text, lineHeight: 1.6, marginBottom: 20 }}>Allowing tracking helps keep the game free by showing more relevant ads.</div>
-                  <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                    <button onClick={() => { setShowPrePrompt(false); prePromptResolveRef.current?.(false); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid " + sk.panelBorder, background: sk.btnPassive, color: sk.textDim, fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>Not Now</button>
-                    <button onClick={() => { setShowPrePrompt(false); prePromptResolveRef.current?.(true); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: sk.btnActive, color: sk.accentText, fontWeight: "bold", fontSize: 14, cursor: "pointer", fontFamily: "'Georgia', serif" }}>Continue</button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {prePromptOverlay}
           </div>
         );
       }
@@ -1373,7 +1380,7 @@
               )}
               {isBest && !busy && <div style={{ position: "absolute", bottom: -labelFont, left: 0, right: 0, textAlign: "center", fontSize: Math.max(7, Math.round(8 * bscale)), color: "#4CAF50", fontWeight: "bold", zIndex: 2 }}>BEST</div>}
             </div>
-            {isYours && <div style={{ fontSize: labelFont, color: canPlay ? sk.accent : sk.textDim, marginTop: 3 }}>{label}</div>}
+            {isYours && !isBest && <div style={{ fontSize: labelFont, color: canPlay ? sk.accent : sk.textDim, marginTop: 3 }}>{label}</div>}
           </div>
         );
       };
@@ -1543,6 +1550,7 @@
             </div>
           )}
           {!adsRemoved && adMobReady && <div style={{ minHeight: 80, flexShrink: 0 }} />}
+          {prePromptOverlay}
         </div>
       );
     }
