@@ -4,15 +4,15 @@
   "webDir": "www",
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 1500,
-      "launchAutoHide": true,
-      "backgroundColor": "#1a0e07",
+      "launchShowDuration": 3000,
+      "launchAutoHide": false,
+      "backgroundColor": "#f3f2f2",
       "showSpinner": false
     },
     "StatusBar": {
       "overlaysWebView": true,
       "style": "DARK",
-      "backgroundColor": "#1a0e07"
+      "backgroundColor": "#f3f2f2"
     },
     "AdMob": {
       "appIdIos": "ca-app-pub-9690726274194822~5303194184",
