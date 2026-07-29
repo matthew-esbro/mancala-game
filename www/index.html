@@ -526,7 +526,9 @@
       const scale = getScale(windowWidth);
       // Portrait stacks the stores above/below the pit grid, freeing the full
       // width for six pits, so the board can render noticeably larger.
-      const bscale = isLandscape ? scale : Math.min(1.1, scale * 1.35);
+      // Traditional board in both orientations: stores at the left/right ends,
+      // six pits between them. Width-constrained in portrait, so use the plain scale.
+      const bscale = scale;
       const [board, setBoard] = useState(initBoard());
       const [marbleMap, setMarbleMap] = useState(initMarbleMap);
       const [screen, setScreen] = useState("setup");
@@ -1418,34 +1420,6 @@
         );
       };
 
-      // Portrait: wide store bars above/below the pit grid, freeing the full
-      // board width for the six pit columns (bigger pits, bigger touch targets).
-      const renderStoreH = (pitIdx, label, color) => {
-        const count = board[pitIdx];
-        const isActive = activePit === pitIdx;
-        const maxShow = 22;
-        const sz = Math.round((count > 14 ? 10 : 13) * bscale);
-        const ids = marbleMap[pitIdx] || [];
-        const storeH = Math.round(54 * bscale);
-        return (
-          <div ref={(el) => { pitRefs.current[pitIdx] = el; }} style={{
-            width: "100%", height: storeH, borderRadius: Math.round(storeH / 2),
-            background: isActive ? "radial-gradient(circle, " + color + "33, " + sk.bg1 + ")" : sk.storeBg,
-            border: isActive ? "2px solid " + color : "2px solid " + sk.storeBorder,
-            boxShadow: isActive ? "0 0 15px " + color + "55, inset 0 4px 16px rgba(0,0,0,0.6)" : "inset 0 4px 16px rgba(0,0,0,0.6)",
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "4px 14px", transition: "border 0.12s, box-shadow 0.12s",
-          }}>
-            <div style={{ fontSize: Math.max(8, Math.round(9 * bscale)), color: sk.textDim, letterSpacing: 1, width: 34, flexShrink: 0 }}>{label}</div>
-            <div style={{ flex: 1, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 1, overflow: "hidden", maxHeight: "100%" }}>
-              {ids.slice(0, maxShow).map((mid) => <Marble key={mid} id={mid} size={sz} bg={sk.marble} />)}
-              {count > maxShow && <div style={{ fontSize: 8, color: sk.textDim }}>+{count - maxShow}</div>}
-            </div>
-            <div style={{ fontSize: Math.round(19 * bscale), fontWeight: "bold", color: color, minWidth: 30, textAlign: "right", flexShrink: 0 }}>{count}</div>
-          </div>
-        );
-      };
-
       const canUndo = training && undoStack.length > 0 && !busy && !gameOver;
 
       return (
@@ -1491,24 +1465,24 @@
           <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: isLandscape ? "4px 6px" : "12px 6px" }}>
             <div ref={boardWrapRef} style={{
               background: sk.boardBg,
-              borderRadius: Math.round(32 * bscale), padding: bscale < 0.8 ? "10px 4px" : isLandscape ? "14px 8px" : "14px 10px",
+              borderRadius: Math.round(32 * bscale), padding: bscale < 0.8 ? "10px 4px" : "14px 8px",
               width: "100%", maxWidth: 540,
               border: "3px solid " + sk.boardBorder,
               boxShadow: "0 10px 40px rgba(0,0,0,0.6), inset 0 2px 0 rgba(255,255,255,0.08)",
-              display: "flex", flexDirection: isLandscape ? "row" : "column",
+              display: "flex", flexDirection: "row",
               alignItems: "stretch", gap: Math.round(6 * bscale),
-              minHeight: isLandscape ? Math.round(190 * bscale) : undefined,
+              minHeight: Math.round(190 * bscale),
               position: "relative",
             }}>
-              {isLandscape ? renderStore(13, localMode ? "P2" : "CPU", "#e67e22") : renderStoreH(13, localMode ? "P2" : "CPU", "#e67e22")}
-              <div style={{ flex: isLandscape ? 1 : "none", display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
+              {renderStore(13, localMode ? "P2" : "CPU", "#e67e22")}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
                 <div style={{ display: "flex", gap: 3 }}>{[12,11,10,9,8,7].map(i => renderPit(i, false))}</div>
                 <div style={{ fontSize: 8, color: sk.textDim, display: "flex", justifyContent: "space-between", padding: "0 4px", opacity: 0.7 }}>
                   <span>{localMode ? "Player 2 side" : "CPU side"}</span><span>{localMode ? "Player 1 side" : "Your side"}</span>
                 </div>
                 <div style={{ display: "flex", gap: 3 }}>{[0,1,2,3,4,5].map(i => renderPit(i, true))}</div>
               </div>
-              {isLandscape ? renderStore(6, localMode ? "P1" : "YOU", "#4CAF50") : renderStoreH(6, localMode ? "P1" : "YOU", "#4CAF50")}
+              {renderStore(6, localMode ? "P1" : "YOU", "#4CAF50")}
               {/* Animation overlay: single reusable flying stone, driven via ref (no React per-frame). */}
               <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20, overflow: "visible" }}>
                 <div ref={flyerRef} style={{
